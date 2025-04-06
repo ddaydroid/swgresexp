@@ -7,26 +7,30 @@ import {
   SelectChangeEvent,
   Paper,
   Typography,
+  Box,
 } from '@mui/material';
 import { useDispatch, useSelector } from 'react-redux';
 import { setPlanetFilter } from '../../redux/slices/filtersSlice';
 import { RootState } from '../../redux/store';
 
-// List of planets in SWG
-const planets = [
-  'Corellia',
-  'Dantooine',
-  'Dathomir',
-  'Endor',
-  'Kashyyyk',
-  'Lok',
-  'Mustafar',
-  'Naboo',
-  'Rori',
-  'Talus',
-  'Tatooine',
-  'Yavin 4',
-];
+// Planet codes and their full names
+const planetMap: Record<string, string> = {
+  'CO': 'Corellia',
+  'DA': 'Dantooine',
+  'DM': 'Dathomir',
+  'EN': 'Endor',
+  'KY': 'Kashyyyk',
+  'LK': 'Lok',
+  'MF': 'Mustafar',
+  'NB': 'Naboo',
+  'RO': 'Rori',
+  'TL': 'Talus',
+  'TT': 'Tatooine',
+  'YV': 'Yavin 4',
+};
+
+// List of planet codes
+const planets = Object.keys(planetMap);
 
 /**
  * Planet filter component for filtering resources by planet
@@ -60,7 +64,25 @@ const PlanetFilter: React.FC = () => {
       <Typography variant="subtitle1" gutterBottom>
         Planet
       </Typography>
-      <FormControl fullWidth size="small">
+      <FormControl 
+        fullWidth 
+        size="small"
+        sx={{
+          position: 'relative',
+          '& .MuiInputLabel-root': {
+            backgroundColor: 'background.paper', // Match paper background
+            paddingRight: 0.5,
+            paddingLeft: 0.5,
+            zIndex: 1,
+            '&.Mui-focused, &.MuiFormLabel-filled': {
+              zIndex: 1 
+            }
+          },
+          '& .MuiSelect-select': {
+            zIndex: 0
+          }
+        }}
+      >
         <InputLabel id="planet-select-label">Select Planet</InputLabel>
         <Select
           labelId="planet-select-label"
@@ -73,9 +95,14 @@ const PlanetFilter: React.FC = () => {
           <MenuItem value="">
             <em>All Planets</em>
           </MenuItem>
-          {planets.map((planet) => (
-            <MenuItem key={planet} value={planet}>
-              {planet}
+          {planets.map((planetCode) => (
+            <MenuItem key={planetCode} value={planetCode}>
+              <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                <Typography>{planetMap[planetCode]}</Typography>
+                <Typography variant="caption" sx={{ ml: 1, color: 'text.secondary' }}>
+                  ({planetCode})
+                </Typography>
+              </Box>
             </MenuItem>
           ))}
         </Select>

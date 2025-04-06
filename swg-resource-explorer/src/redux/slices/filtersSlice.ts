@@ -9,6 +9,9 @@ const initialState: ResourceFilters = {
   stats: {},
   page: 1,
   limit: 50,
+  sortBy: null as string | null,
+  sortDirection: 'desc' as 'asc' | 'desc',
+  sortStats: [] as string[],
 };
 
 // Create the filters slice
@@ -57,6 +60,38 @@ const filtersSlice = createSlice({
       state.page = 1; // Reset to first page when limit changes
     },
     resetFilters: () => initialState,
+    setSortBy: (state, action: PayloadAction<string | null>) => {
+      state.sortBy = action.payload;
+      if (action.payload !== 'average') {
+        state.sortStats = [];
+      }
+    },
+    setSortDirection: (state, action: PayloadAction<'asc' | 'desc'>) => {
+      state.sortDirection = action.payload;
+    },
+    addStatToAverage: (state, action: PayloadAction<string>) => {
+      if (!state.sortStats) {
+        state.sortStats = [];
+      }
+      if (!state.sortStats.includes(action.payload)) {
+        state.sortStats.push(action.payload);
+      }
+      state.sortBy = 'average';
+    },
+    removeStatFromAverage: (state, action: PayloadAction<string>) => {
+      if (!state.sortStats) {
+        state.sortStats = [];
+        return;
+      }
+      state.sortStats = state.sortStats.filter(stat => stat !== action.payload);
+      if (state.sortStats.length === 0) {
+        state.sortBy = null;
+      }
+    },
+    clearSortStats: (state) => {
+      state.sortStats = [];
+      state.sortBy = null;
+    },
   },
 });
 
@@ -70,5 +105,10 @@ export const {
   setPage,
   setLimit,
   resetFilters,
+  setSortBy,
+  setSortDirection,
+  addStatToAverage,
+  removeStatFromAverage,
+  clearSortStats,
 } = filtersSlice.actions;
 export default filtersSlice.reducer;

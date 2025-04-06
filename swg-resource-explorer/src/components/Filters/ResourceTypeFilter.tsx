@@ -75,7 +75,25 @@ const ResourceTypeFilter: React.FC = () => {
       <Typography variant="subtitle1" gutterBottom>
         Resource Type
       </Typography>
-      <FormControl fullWidth size="small">
+      <FormControl 
+        fullWidth 
+        size="small"
+        sx={{
+          position: 'relative',
+          '& .MuiInputLabel-root': {
+            backgroundColor: 'background.paper', // Match paper background
+            paddingRight: 0.5,
+            paddingLeft: 0.5,
+            zIndex: 1,
+            '&.Mui-focused, &.MuiFormLabel-filled': {
+              zIndex: 1 
+            }
+          },
+          '& .MuiSelect-select': {
+            zIndex: 0
+          }
+        }}
+      >
         <InputLabel id="type-select-label">Select Type</InputLabel>
         {loading ? (
           <Box sx={{ display: 'flex', justifyContent: 'center', p: 2 }}>

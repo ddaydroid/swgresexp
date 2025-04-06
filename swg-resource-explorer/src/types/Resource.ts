@@ -63,4 +63,7 @@ export interface ResourceFilters {
   };
   page: number;
   limit: number;
+  sortBy?: string | null;
+  sortDirection?: 'asc' | 'desc';
+  sortStats?: string[];
 }

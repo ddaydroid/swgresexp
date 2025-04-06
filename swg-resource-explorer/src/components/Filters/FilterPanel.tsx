@@ -1,9 +1,8 @@
 import React from 'react';
 import { Box, Paper, Typography, Divider } from '@mui/material';
-import SearchBar from './SearchBar';
 import PlanetFilter from './PlanetFilter';
 import ResourceTypeFilter from './ResourceTypeFilter';
-import StatFilter from './StatFilter';
+import StatRangeFilter from './StatRangeFilter';
 
 /**
  * Filter panel component that combines all filter components
@@ -24,10 +23,9 @@ const FilterPanel: React.FC = () => {
       <Divider sx={{ mb: 2 }} />
       
       <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-        <SearchBar />
         <PlanetFilter />
         <ResourceTypeFilter />
-        <StatFilter />
+        <StatRangeFilter />
       </Box>
     </Paper>
   );
