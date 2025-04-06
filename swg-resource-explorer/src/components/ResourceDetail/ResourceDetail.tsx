@@ -6,25 +6,13 @@ import {
   Chip,
   Divider,
   Button,
-  LinearProgress,
-  Tooltip,
   CircularProgress,
 } from '@mui/material';
 import { useDispatch, useSelector } from 'react-redux';
 import { clearSelectedResource } from '../../redux/slices/resourcesSlice';
 import { RootState } from '../../redux/store';
-import StatChart from './StatChart';
+import StatTable from './StatTable';
 
-// Stat definitions with labels and descriptions
-const statDefinitions = {
-  dr: { label: 'DR', name: 'Damage Resistance', color: '#f44336' },
-  ma: { label: 'MA', name: 'Malleability', color: '#2196f3' },
-  oq: { label: 'OQ', name: 'Overall Quality', color: '#4caf50' },
-  sr: { label: 'SR', name: 'Shock Resistance', color: '#ff9800' },
-  ut: { label: 'UT', name: 'Unit Toughness', color: '#9c27b0' },
-  fl: { label: 'FL', name: 'Flavor', color: '#e91e63' },
-  pe: { label: 'PE', name: 'Potential Energy', color: '#00bcd4' },
-};
 
 /**
  * Resource detail component for displaying detailed information about a selected resource
@@ -110,33 +98,7 @@ const ResourceDetail: React.FC = () => {
           </Typography>
 
           <Box sx={{ mb: 3 }}>
-            <StatChart resource={selectedResource} />
-          </Box>
-
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, mb: 3 }}>
-            {Object.entries(selectedResource.stats).map(([stat, value]) => (
-              <Box key={stat} sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                <Tooltip title={statDefinitions[stat as keyof typeof statDefinitions]?.name || stat}>
-                  <Typography variant="body2" sx={{ minWidth: 50, fontWeight: 'bold' }}>
-                    {statDefinitions[stat as keyof typeof statDefinitions]?.label || stat}:
-                  </Typography>
-                </Tooltip>
-                <LinearProgress
-                  variant="determinate"
-                  value={value ? (value / 1000) * 100 : 0}
-                  sx={{
-                    height: 10,
-                    borderRadius: 1,
-                    flexGrow: 1,
-                    backgroundColor: 'rgba(0, 0, 0, 0.1)',
-                    '& .MuiLinearProgress-bar': {
-                      backgroundColor: statDefinitions[stat as keyof typeof statDefinitions]?.color || 'primary.main',
-                    },
-                  }}
-                />
-                <Typography variant="body2">{value}</Typography>
-              </Box>
-            ))}
+            <StatTable resource={selectedResource} />
           </Box>
 
           <Divider sx={{ my: 2 }} />
