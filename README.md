@@ -1,3 +1,8 @@
+# WARNING!!!
+In very begining stages of development, but the goal is to mondernize the look/feel of https://www.SWGAide.com and https://www.galaxyharvester.net, while adding more filter/search functionality.  
+
+I am interested into investigating if there is a way to directly plugin to game for realtime updates!? (ask modding community if its possible?)
+
 # SWG Resource Explorer Documentation
 
 This documentation provides comprehensive information about the SWG Resource Explorer application, covering both usage instructions for end-users and technical details for developers.
