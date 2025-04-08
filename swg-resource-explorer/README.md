@@ -1,6 +1,44 @@
-# Getting Started with Create React App
+# SWG Resource Explorer
 
-This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
+SWG Resource Explorer is a web application designed to help Star Wars Galaxies players discover and filter in-game resources. The application loads resource data from an XML file and provides a user-friendly interface to search, filter, and analyze resources based on various properties.
+
+![SWG Resource Explorer](https://via.placeholder.com/800x400?text=SWG+Resource+Explorer)
+
+## Features
+
+- Browse all currently available SWG resources with pagination
+- Filter resources by name, type, planet, and stat values
+- View detailed information about individual resources
+- Responsive design for desktop and mobile use
+- Server-side filtering and caching for performance
+
+## Quick Start
+
+1. Ensure you have Node.js 16+ installed
+2. Place your `currentresources_168.xml` file in the project root
+3. Run the start script:
+
+```bash
+# Make the script executable (Linux/macOS only)
+chmod +x start-app.sh
+
+# Run the application
+./start-app.sh
+```
+
+4. Open your browser to `http://localhost:3000`
+
+## Documentation
+
+Comprehensive documentation is available in the `/docs` directory:
+
+- **[User Guide](docs/user-guide.md)** - Learn how to use the application effectively
+- **[Installation Guide](docs/installation.md)** - Step-by-step installation instructions
+- **[Technical Documentation](docs/technical.md)** - In-depth technical details
+- **[API Reference](docs/api-reference.md)** - Complete reference for the REST API
+- **[Development Guide](docs/development-guide.md)** - Guide for contributors
+
+For quick navigation through all documentation, see the [Documentation Index](docs/index.md).
 
 ## Available Scripts
 
@@ -11,36 +49,40 @@ In the project directory, you can run:
 Runs the app in the development mode.\
 Open [http://localhost:3000](http://localhost:3000) to view it in the browser.
 
-The page will reload if you make edits.\
-You will also see any lint errors in the console.
+### `npm run server`
+
+Starts the backend Express server on port 5000.
+
+### `npm run dev`
+
+Concurrently runs both the frontend and backend servers.
 
 ### `npm test`
 
-Launches the test runner in the interactive watch mode.\
-See the section about [running tests](https://facebook.github.io/create-react-app/docs/running-tests) for more information.
+Launches the test runner in the interactive watch mode.
 
 ### `npm run build`
 
-Builds the app for production to the `build` folder.\
-It correctly bundles React in production mode and optimizes the build for the best performance.
+Builds the app for production to the `build` folder.
 
-The build is minified and the filenames include the hashes.\
-Your app is ready to be deployed!
+## Technology Stack
 
-See the section about [deployment](https://facebook.github.io/create-react-app/docs/deployment) for more information.
+- **Frontend**: React, TypeScript, Redux Toolkit, Material UI
+- **Backend**: Node.js, Express.js, fast-xml-parser
+- **Development**: Jest, React Testing Library
 
-### `npm run eject`
+## Requirements
 
-**Note: this is a one-way operation. Once you `eject`, you can’t go back!**
+- Node.js 16.x or higher
+- npm 8.x or higher
+- Star Wars Galaxies resource data XML file
 
-If you aren’t satisfied with the build tool and configuration choices, you can `eject` at any time. This command will remove the single build dependency from your project.
+## License
 
-Instead, it will copy all the configuration files and the transitive dependencies (webpack, Babel, ESLint, etc) right into your project so you have full control over them. All of the commands except `eject` will still work, but they will point to the copied scripts so you can tweak them. At this point you’re on your own.
+This project is open-source software.
 
-You don’t have to ever use `eject`. The curated feature set is suitable for small and middle deployments, and you shouldn’t feel obligated to use this feature. However we understand that this tool wouldn’t be useful if you couldn’t customize it when you are ready for it.
+## Acknowledgments
 
-## Learn More
-
-You can learn more in the [Create React App documentation](https://facebook.github.io/create-react-app/docs/getting-started).
-
-To learn React, check out the [React documentation](https://reactjs.org/).
+- Star Wars Galaxies community for resource data
+- Galaxy Harvester for resource tracking tools and data formats
+- All contributors to this project
