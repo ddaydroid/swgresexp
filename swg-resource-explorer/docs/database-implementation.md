@@ -4,7 +4,7 @@ This document outlines the plan to migrate from XML parsing to a database-driven
 
 ## Overview
 
-The current XML-based approach will be replaced with a relational database system that provides better performance, scalability, and support for complex queries necessary for a crafting calculator.
+The current XML-based approach will be replaced with a relational database system that provides better performance, scalability, and support for complex queries necessary for a crafting calculator. This change will also enable more efficient filtering, sorting, and data retrieval operations.
 
 ## Database Schema Design
 
@@ -127,8 +127,11 @@ gantt
 
 ```bash
 # Core dependencies
-npm install --save sequelize sqlite3 pg
-npm install --save-dev sequelize-cli
+npm install --save sequelize sqlite3 pg dotenv
+npm install --save-dev sequelize-cli jest supertest
+
+# Logging and error tracking
+npm install --save winston
 
 # XML parsing (already installed)
 # npm install --save fast-xml-parser
@@ -137,21 +140,34 @@ npm install --save-dev sequelize-cli
 ### 2. Initialize Sequelize
 
 ```bash
-mkdir -p swg-resource-explorer/server/database
-cd swg-resource-explorer/server/database
+mkdir -p server/database
+cd server/database
 npx sequelize-cli init
 ```
 
 ### 3. Configure Database Connection
 
-Create `swg-resource-explorer/server/database/config/config.js`:
+Create `server/database/config/config.js`:
 
 ```javascript
+require('dotenv').config({ path: process.env.NODE_ENV === 'production' ? '.env.production' : '.env.development' });
+
 module.exports = {
   development: {
     dialect: 'sqlite',
     storage: './server/database/database.sqlite',
     logging: console.log,
+    pool: {
+      max: 5,
+      min: 0,
+      acquire: 30000,
+      idle: 10000
+    }
+  },
+  test: {
+    dialect: 'sqlite',
+    storage: ':memory:',
+    logging: false
   },
   production: {
     dialect: 'postgres',
@@ -161,8 +177,37 @@ module.exports = {
     password: process.env.DB_PASS,
     database: process.env.DB_NAME,
     logging: false,
+    pool: {
+      max: 10,
+      min: 2,
+      acquire: 30000,
+      idle: 10000
+    },
+    dialectOptions: {
+      ssl: {
+        require: true,
+        rejectUnauthorized: false
+      }
+    }
   }
 };
+```
+
+Create environment variable files:
+
+```bash
+# .env.development
+NODE_ENV=development
+PORT=5000
+
+# .env.production
+NODE_ENV=production
+PORT=5000
+DB_HOST=your-production-host
+DB_PORT=5432
+DB_USER=your-db-username
+DB_PASS=your-db-password
+DB_NAME=swg_resources
 ```
 
 ## Phase 2: Model Definitions (4 days)
@@ -683,6 +728,137 @@ npx sequelize-cli migration:generate --name create-resources-tables
 npx sequelize-cli migration:generate --name create-schematics-tables
 ```
 
+Example of a complete migration file for resources:
+
+```javascript
+'use strict';
+
+module.exports = {
+  up: async (queryInterface, Sequelize) => {
+    // Create resources table
+    await queryInterface.createTable('resources', {
+      id: {
+        type: Sequelize.INTEGER,
+        primaryKey: true,
+        autoIncrement: false
+      },
+      name: {
+        type: Sequelize.STRING,
+        allowNull: false
+      },
+      type: {
+        type: Sequelize.STRING,
+        allowNull: false
+      },
+      typeId: {
+        type: Sequelize.STRING,
+        allowNull: false
+      },
+      availableTimestamp: {
+        type: Sequelize.INTEGER,
+        allowNull: false
+      },
+      availableBy: {
+        type: Sequelize.STRING,
+        allowNull: true
+      },
+      createdAt: {
+        type: Sequelize.DATE,
+        allowNull: false
+      },
+      updatedAt: {
+        type: Sequelize.DATE,
+        allowNull: false
+      }
+    });
+
+    // Create indexes
+    await queryInterface.addIndex('resources', ['name']);
+    await queryInterface.addIndex('resources', ['type']);
+    await queryInterface.addIndex('resources', ['availableTimestamp']);
+
+    // Create resource_stats table
+    await queryInterface.createTable('resource_stats', {
+      id: {
+        type: Sequelize.INTEGER,
+        primaryKey: true,
+        autoIncrement: true
+      },
+      resourceId: {
+        type: Sequelize.INTEGER,
+        allowNull: false,
+        references: {
+          model: 'resources',
+          key: 'id'
+        },
+        onDelete: 'CASCADE'
+      },
+      name: {
+        type: Sequelize.STRING,
+        allowNull: false
+      },
+      value: {
+        type: Sequelize.INTEGER,
+        allowNull: false
+      },
+      createdAt: {
+        type: Sequelize.DATE,
+        allowNull: false
+      },
+      updatedAt: {
+        type: Sequelize.DATE,
+        allowNull: false
+      }
+    });
+
+    // Create indexes
+    await queryInterface.addIndex('resource_stats', ['resourceId']);
+    await queryInterface.addIndex('resource_stats', ['name']);
+    await queryInterface.addIndex('resource_stats', ['name', 'value']);
+
+    // Create resource_planets table
+    await queryInterface.createTable('resource_planets', {
+      id: {
+        type: Sequelize.INTEGER,
+        primaryKey: true,
+        autoIncrement: true
+      },
+      resourceId: {
+        type: Sequelize.INTEGER,
+        allowNull: false,
+        references: {
+          model: 'resources',
+          key: 'id'
+        },
+        onDelete: 'CASCADE'
+      },
+      name: {
+        type: Sequelize.STRING,
+        allowNull: false
+      },
+      createdAt: {
+        type: Sequelize.DATE,
+        allowNull: false
+      },
+      updatedAt: {
+        type: Sequelize.DATE,
+        allowNull: false
+      }
+    });
+
+    // Create indexes
+    await queryInterface.addIndex('resource_planets', ['resourceId']);
+    await queryInterface.addIndex('resource_planets', ['name']);
+  },
+
+  down: async (queryInterface, Sequelize) => {
+    await queryInterface.dropTable('resource_planets');
+    await queryInterface.dropTable('resource_stats');
+    await queryInterface.dropTable('resources');
+  }
+};
+```
+
 ## Phase 3: XML Importers (5 days)
 
 ### 1. Create Resource Importer
@@ -1076,19 +1252,673 @@ if (require.main === module) {
 
 ### 1. Update Resource Routes
 
-Modify `swg-resource-explorer/server/routes/resources.js` to use the database instead of XML parsing.
+Create `server/routes/resources.js` to use the database instead of XML parsing:
+
+```javascript
+const express = require('express');
+const { Op } = require('sequelize');
+const db = require('../database/models');
+const { validateResourceQuery } = require('../utils/validators');
+const logger = require('../utils/logger');
+
+const router = express.Router();
+
+// Get all resources with filtering and pagination
+router.get('/', async (req, res) => {
+  try {
+    // Validate and sanitize query parameters
+    const { error, value } = validateResourceQuery(req.query);
+    if (error) {
+      return res.status(400).json({ error: error.details[0].message });
+    }
+    
+    const { name, type, planet, page = 1, limit = 50, ...statFilters } = value;
+    
+    // Build query conditions
+    const whereConditions = {};
+    const include = [];
+    
+    // Name filter
+    if (name) {
+      whereConditions.name = { [Op.like]: `%${name}%` };
+    }
+    
+    // Type filter
+    if (type) {
+      whereConditions.type = { [Op.like]: `%${type}%` };
+    }
+    
+    // Planet filter
+    if (planet) {
+      include.push({
+        model: db.ResourcePlanet,
+        as: 'planets',
+        where: {
+          name: { [Op.like]: `%${planet}%` }
+        },
+        required: true
+      });
+    } else {
+      include.push({
+        model: db.ResourcePlanet,
+        as: 'planets'
+      });
+    }
+    
+    // Stats filters
+    const statConditions = [];
+    const statFiltersMapping = {
+      min_dr: { name: 'dr', op: Op.gte },
+      max_dr: { name: 'dr', op: Op.lte },
+      min_ma: { name: 'ma', op: Op.gte },
+      max_ma: { name: 'ma', op: Op.lte },
+      min_oq: { name: 'oq', op: Op.gte },
+      max_oq: { name: 'oq', op: Op.lte },
+      min_sr: { name: 'sr', op: Op.gte },
+      max_sr: { name: 'sr', op: Op.lte },
+      min_ut: { name: 'ut', op: Op.gte },
+      max_ut: { name: 'ut', op: Op.lte },
+      min_fl: { name: 'fl', op: Op.gte },
+      max_fl: { name: 'fl', op: Op.lte },
+      min_pe: { name: 'pe', op: Op.gte },
+      max_pe: { name: 'pe', op: Op.lte }
+    };
+    
+    Object.entries(statFilters).forEach(([filter, value]) => {
+      if (statFiltersMapping[filter]) {
+        const { name, op } = statFiltersMapping[filter];
+        
+        statConditions.push({
+          model: db.ResourceStat,
+          as: 'stats',
+          where: {
+            name: name,
+            value: { [op]: value }
+          },
+          required: true
+        });
+      }
+    });
+    
+    if (statConditions.length > 0) {
+      include.push(...statConditions);
+    } else {
+      include.push({
+        model: db.ResourceStat,
+        as: 'stats'
+      });
+    }
+    
+    // Pagination
+    const offset = (page - 1) * limit;
+    
+    // Execute query
+    const { count, rows } = await db.Resource.findAndCountAll({
+      where: whereConditions,
+      include,
+      distinct: true,
+      limit,
+      offset,
+      order: [['availableTimestamp', 'DESC']]
+    });
+    
+    // Format response
+    const resources = rows.map(resource => {
+      const stats = {};
+      resource.stats.forEach(stat => {
+        stats[stat.name] = stat.value;
+      });
+      
+      const planets = resource.planets.map(planet => planet.name);
+      
+      return {
+        id: resource.id,
+        name: resource.name,
+        type: resource.type,
+        typeId: resource.typeId,
+        availableTimestamp: resource.availableTimestamp,
+        availableBy: resource.availableBy,
+        stats,
+        planets
+      };
+    });
+    
+    res.json({
+      total: count,
+      page: parseInt(page, 10),
+      limit: parseInt(limit, 10),
+      resources
+    });
+  } catch (error) {
+    logger.error('Error fetching resources:', error);
+    res.status(500).json({ error: 'Failed to fetch resources' });
+  }
+});
+
+// Get resource categories
+router.get('/categories', async (req, res) => {
+  try {
+    // Fetch all resources
+    const resources = await db.Resource.findAll({
+      attributes: ['type']
+    });
+    
+    // Process categories
+    const categories = {};
+    const planetTypes = {};
+    
+    resources.forEach(resource => {
+      const fullType = resource.type;
+      const parts = fullType.split(' ');
+      
+      // Assume first word is planet-specific prefix
+      const planetPrefix = parts[0];
+      const baseType = parts.slice(1).join(' ');
+      
+      // Group by base type
+      if (!categories[baseType]) {
+        categories[baseType] = [];
+      }
+      
+      if (!categories[baseType].includes(fullType)) {
+        categories[baseType].push(fullType);
+      }
+      
+      // Track planet-specific types
+      if (!planetTypes[planetPrefix]) {
+        planetTypes[planetPrefix] = [];
+      }
+      
+      if (!planetTypes[planetPrefix].includes(baseType)) {
+        planetTypes[planetPrefix].push(baseType);
+      }
+    });
+    
+    res.json({ categories, planetTypes });
+  } catch (error) {
+    logger.error('Error fetching categories:', error);
+    res.status(500).json({ error: 'Failed to fetch categories' });
+  }
+});
+
+// Get resource by ID
+router.get('/:id', async (req, res) => {
+  try {
+    const resourceId = parseInt(req.params.id, 10);
+    
+    const resource = await db.Resource.findByPk(resourceId, {
+      include: [
+        { model: db.ResourceStat, as: 'stats' },
+        { model: db.ResourcePlanet, as: 'planets' }
+      ]
+    });
+    
+    if (!resource) {
+      return res.status(404).json({ error: 'Resource not found' });
+    }
+    
+    // Format response
+    const stats = {};
+    resource.stats.forEach(stat => {
+      stats[stat.name] = stat.value;
+    });
+    
+    const planets = resource.planets.map(planet => planet.name);
+    
+    res.json({
+      id: resource.id,
+      name: resource.name,
+      type: resource.type,
+      typeId: resource.typeId,
+      availableTimestamp: resource.availableTimestamp,
+      availableBy: resource.availableBy,
+      stats,
+      planets
+    });
+  } catch (error) {
+    logger.error('Error fetching resource:', error);
+    res.status(500).json({ error: 'Failed to fetch resource' });
+  }
+});
+
+module.exports = router;
+```
 
 ### 2. Create Schematic Routes
 
-Create `swg-resource-explorer/server/routes/schematics.js` for schematic API endpoints.
+Create `server/routes/schematics.js` for schematic API endpoints:
+
+```javascript
+const express = require('express');
+const { Op } = require('sequelize');
+const db = require('../database/models');
+const logger = require('../utils/logger');
+
+const router = express.Router();
+
+// Get all schematics with filtering and pagination
+router.get('/', async (req, res) => {
+  try {
+    const {
+      name,
+      category,
+      profession,
+      resource_type,
+      page = 1,
+      limit = 50
+    } = req.query;
+    
+    // Build query conditions
+    const whereConditions = {};
+    const include = [];
+    
+    // Name filter
+    if (name) {
+      whereConditions.name = { [Op.like]: `%${name}%` };
+    }
+    
+    // Category filter
+    if (category) {
+      whereConditions.category = { [Op.like]: `%${category}%` };
+    }
+    
+    // Profession filter
+    if (profession) {
+      include.push({
+        model: db.ProfessionLevel,
+        as: 'professionLevels',
+        where: {
+          profession: { [Op.like]: `%${profession}%` }
+        },
+        required: true
+      });
+    } else {
+      include.push({
+        model: db.ProfessionLevel,
+        as: 'professionLevels'
+      });
+    }
+    
+    // Resource type filter
+    if (resource_type) {
+      include.push({
+        model: db.SchematicResource,
+        as: 'resources',
+        where: {
+          resourceType: { [Op.like]: `%${resource_type}%` }
+        },
+        required: true
+      });
+    } else {
+      include.push({
+        model: db.SchematicResource,
+        as: 'resources'
+      });
+    }
+    
+    // Always include components and experimental groups
+    include.push({
+      model: db.SchematicComponent,
+      as: 'components'
+    });
+    
+    include.push({
+      model: db.ExperimentalGroup,
+      as: 'experimentalGroups',
+      include: [{
+        model: db.ExperimentalProperty,
+        as: 'properties'
+      }]
+    });
+    
+    // Pagination
+    const offset = (page - 1) * limit;
+    
+    // Execute query
+    const { count, rows } = await db.Schematic.findAndCountAll({
+      where: whereConditions,
+      include,
+      distinct: true,
+      limit,
+      offset,
+      order: [['name', 'ASC']]
+    });
+    
+    res.json({
+      total: count,
+      page: parseInt(page, 10),
+      limit: parseInt(limit, 10),
+      schematics: rows
+    });
+  } catch (error) {
+    logger.error('Error fetching schematics:', error);
+    res.status(500).json({ error: 'Failed to fetch schematics' });
+  }
+});
+
+// Get schematic categories
+router.get('/categories', async (req, res) => {
+  try {
+    const categories = await db.Schematic.findAll({
+      attributes: ['category'],
+      group: ['category'],
+      raw: true
+    });
+    
+    const professions = await db.ProfessionLevel.findAll({
+      attributes: ['profession'],
+      group: ['profession'],
+      raw: true
+    });
+    
+    res.json({
+      categories: categories.map(c => c.category),
+      professions: professions.map(p => p.profession)
+    });
+  } catch (error) {
+    logger.error('Error fetching schematic categories:', error);
+    res.status(500).json({ error: 'Failed to fetch schematic categories' });
+  }
+});
+
+// Get schematic by ID
+router.get('/:id', async (req, res) => {
+  try {
+    const schematicId = parseInt(req.params.id, 10);
+    
+    const schematic = await db.Schematic.findByPk(schematicId, {
+      include: [
+        { model: db.ProfessionLevel, as: 'professionLevels' },
+        { model: db.SchematicResource, as: 'resources' },
+        { model: db.SchematicComponent, as: 'components' },
+        {
+          model: db.ExperimentalGroup,
+          as: 'experimentalGroups',
+          include: [{
+            model: db.ExperimentalProperty,
+            as: 'properties'
+          }]
+        }
+      ]
+    });
+    
+    if (!schematic) {
+      return res.status(404).json({ error: 'Schematic not found' });
+    }
+    
+    res.json(schematic);
+  } catch (error) {
+    logger.error('Error fetching schematic:', error);
+    res.status(500).json({ error: 'Failed to fetch schematic' });
+  }
+});
+
+module.exports = router;
+```
 
 ### 3. Create Crafting Calculator API
 
-Create `swg-resource-explorer/server/routes/calculator.js` for crafting calculator functionality.
+Create `server/routes/calculator.js` for crafting calculator functionality:
+
+```javascript
+const express = require('express');
+const { Op } = require('sequelize');
+const db = require('../database/models');
+const logger = require('../utils/logger');
+
+const router = express.Router();
+
+// Calculate best resources for a schematic
+router.post('/calculate', async (req, res) => {
+  try {
+    const { schematicId, experimentFocus } = req.body;
+    
+    if (!schematicId) {
+      return res.status(400).json({ error: 'Schematic ID is required' });
+    }
+    
+    // Get schematic with experimental properties
+    const schematic = await db.Schematic.findByPk(schematicId, {
+      include: [
+        {
+          model: db.SchematicResource,
+          as: 'resources'
+        },
+        {
+          model: db.ExperimentalGroup,
+          as: 'experimentalGroups',
+          include: [{
+            model: db.ExperimentalProperty,
+            as: 'properties'
+          }]
+        }
+      ]
+    });
+    
+    if (!schematic) {
+      return res.status(404).json({ error: 'Schematic not found' });
+    }
+    
+    // Get all resources needed for this schematic
+    const resourceTypes = schematic.resources.map(r => r.resourceType);
+    
+    // Get all available resources of the required types
+    const availableResources = await db.Resource.findAll({
+      where: {
+        type: { [Op.in]: resourceTypes }
+      },
+      include: [
+        { model: db.ResourceStat, as: 'stats' },
+        { model: db.ResourcePlanet, as: 'planets' }
+      ]
+    });
+    
+    // Format resources by type
+    const resourcesByType = {};
+    availableResources.forEach(resource => {
+      const type = resource.type;
+      if (!resourcesByType[type]) {
+        resourcesByType[type] = [];
+      }
+      
+      // Format stats for easier calculation
+      const stats = {};
+      resource.stats.forEach(stat => {
+        stats[stat.name] = stat.value;
+      });
+      
+      const planets = resource.planets.map(planet => planet.name);
+      
+      resourcesByType[type].push({
+        id: resource.id,
+        name: resource.name,
+        type: resource.type,
+        stats,
+        planets
+      });
+    });
+    
+    // Calculate optimal resources based on experimental focus
+    const calculationResults = calculateOptimalResources(
+      schematic,
+      resourcesByType,
+      experimentFocus
+    );
+    
+    res.json(calculationResults);
+  } catch (error) {
+    logger.error('Error calculating resources:', error);
+    res.status(500).json({ error: 'Failed to calculate resources' });
+  }
+});
+
+/**
+ * Calculate optimal resources for a schematic based on experimental focus
+ * @param {Object} schematic - Schematic data
+ * @param {Object} resourcesByType - Available resources grouped by type
+ * @param {String} experimentFocus - Experimental property to focus on
+ * @returns {Object} - Calculation results
+ */
+function calculateOptimalResources(schematic, resourcesByType, experimentFocus) {
+  // Implementation of resource calculation algorithm
+  // This is a placeholder - the actual implementation would be more complex
+  
+  const results = {
+    schematicId: schematic.id,
+    schematicName: schematic.name,
+    experimentFocus: experimentFocus || 'balanced',
+    resourceRecommendations: []
+  };
+  
+  // For each required resource type
+  schematic.resources.forEach(requiredResource => {
+    const resourceType = requiredResource.resourceType;
+    const availableOfType = resourcesByType[resourceType] || [];
+    
+    if (availableOfType.length === 0) {
+      results.resourceRecommendations.push({
+        resourceType,
+        quantity: requiredResource.quantity,
+        recommended: null,
+        message: 'No resources of this type available'
+      });
+      return;
+    }
+    
+    // Find the best resource based on experimental weight
+    let bestResource = null;
+    let bestScore = -1;
+    
+    availableOfType.forEach(resource => {
+      const score = calculateResourceScore(
+        resource,
+        schematic.experimentalGroups,
+        experimentFocus
+      );
+      
+      if (score > bestScore) {
+        bestScore = score;
+        bestResource = resource;
+      }
+    });
+    
+    results.resourceRecommendations.push({
+      resourceType,
+      quantity: requiredResource.quantity,
+      recommended: bestResource,
+      score: bestScore
+    });
+  });
+  
+  return results;
+}
+
+/**
+ * Calculate a score for a resource based on experimental properties
+ * @param {Object} resource - Resource data with stats
+ * @param {Array} experimentalGroups - Experimental groups with properties
+ * @param {String} focus - Experimental property to focus on
+ * @returns {Number} - Score (0-1000)
+ */
+function calculateResourceScore(resource, experimentalGroups, focus) {
+  // Implementation of resource scoring algorithm
+  // This is a placeholder - the actual implementation would be more complex
+  
+  let totalScore = 0;
+  let weightCount = 0;
+  
+  // Calculate weighted score based on experimental properties
+  experimentalGroups.forEach(group => {
+    group.properties.forEach(property => {
+      Object.entries(resource.stats).forEach(([statName, statValue]) => {
+        // Get the weight for this stat from the property
+        const weightKey = `${statName}Weight`;
+        const weight = property[weightKey] || 0;
+        
+        if (weight > 0) {
+          // If focused on this property, double its weight
+          const focusMultiplier = (focus && property.description === focus) ? 2 : 1;
+          
+          // Calculate weighted score component
+          totalScore += (statValue * weight * focusMultiplier);
+          weightCount += (weight * focusMultiplier);
+        }
+      });
+    });
+  });
+  
+  // Normalize score (0-1000)
+  return weightCount > 0 ? (totalScore / weightCount) : 0;
+}
+
+module.exports = router;
+```
 
 ### 4. Update Server.js
 
-Modify the main server file to include the new routes and database initialization.
+Modify the main server file to include the new database initialization and routes:
+
+```javascript
+const express = require('express');
+const cors = require('cors');
+const path = require('path');
+const db = require('./database/models');
+const logger = require('./utils/logger');
+
+// Routes
+const resourceRoutes = require('./routes/resources');
+const schematicRoutes = require('./routes/schematics');
+const calculatorRoutes = require('./routes/calculator');
+
+const app = express();
+const PORT = process.env.PORT || 5000;
+
+// Middleware
+app.use(cors());
+app.use(express.json());
+
+// Database connection
+db.sequelize.authenticate()
+  .then(() => {
+    logger.info('Database connection established successfully.');
+  })
+  .catch(err => {
+    logger.error('Unable to connect to the database:', err);
+  });
+
+// API Routes
+app.use('/api/resources', resourceRoutes);
+app.use('/api/schematics', schematicRoutes);
+app.use('/api/calculator', calculatorRoutes);
+
+// API Documentation
+app.use('/api-docs', express.static(path.join(__dirname, 'docs')));
+
+// Error handling middleware
+app.use((err, req, res, next) => {
+  logger.error(err.stack);
+  res.status(500).json({
+    error: 'Internal Server Error',
+    message: process.env.NODE_ENV === 'development' ? err.message : undefined
+  });
+});
+
+// Serve static assets in production
+if (process.env.NODE_ENV === 'production') {
+  app.use(express.static(path.join(__dirname, '../build')));
+  
+  app.get('*', (req, res) => {
+    res.sendFile(path.resolve(__dirname, '../build', 'index.html'));
+  });
+}
+
+// Start server
+app.listen(PORT, () => {
+  logger.info(`Server running on port ${PORT}`);
+});
+
+module.exports = app; // Export for testing
+```
 
 ## Phase 5: Frontend Integration (8 days)
 
@@ -1112,15 +1942,353 @@ Develop React components for the crafting calculator:
 
 ### 1. Create Test Cases
 
-Develop unit and integration tests for all components.
+Create `server/tests/resource.test.js` for testing resource API:
+
+```javascript
+const request = require('supertest');
+const app = require('../server');
+const db = require('../database/models');
+
+describe('Resource API', () => {
+  beforeAll(async () => {
+    // Setup test database and seed with test data
+    await db.sequelize.sync({ force: true });
+    
+    // Insert test resources
+    await db.Resource.bulkCreate([
+      {
+        id: 1,
+        name: 'Test Resource 1',
+        type: 'Naboo Iron',
+        typeId: 'iron_naboo',
+        availableTimestamp: Math.floor(Date.now() / 1000) - 86400,
+        availableBy: 'tester'
+      },
+      {
+        id: 2,
+        name: 'Test Resource 2',
+        type: 'Tatooine Copper',
+        typeId: 'copper_tatooine',
+        availableTimestamp: Math.floor(Date.now() / 1000) - 172800,
+        availableBy: 'tester'
+      }
+    ]);
+    
+    // Insert stats
+    await db.ResourceStat.bulkCreate([
+      { resourceId: 1, name: 'dr', value: 500 },
+      { resourceId: 1, name: 'ma', value: 600 },
+      { resourceId: 1, name: 'oq', value: 700 },
+      { resourceId: 2, name: 'dr', value: 300 },
+      { resourceId: 2, name: 'ma', value: 800 },
+      { resourceId: 2, name: 'oq', value: 400 }
+    ]);
+    
+    // Insert planets
+    await db.ResourcePlanet.bulkCreate([
+      { resourceId: 1, name: 'Naboo' },
+      { resourceId: 2, name: 'Tatooine' }
+    ]);
+  });
+  
+  afterAll(async () => {
+    await db.sequelize.close();
+  });
+  
+  test('GET /api/resources should return resources with pagination', async () => {
+    const res = await request(app).get('/api/resources');
+    
+    expect(res.statusCode).toBe(200);
+    expect(res.body.total).toBe(2);
+    expect(res.body.resources.length).toBe(2);
+  });
+  
+  test('GET /api/resources with filters should return filtered resources', async () => {
+    const res = await request(app).get('/api/resources?name=Test%20Resource%201');
+    
+    expect(res.statusCode).toBe(200);
+    expect(res.body.total).toBe(1);
+    expect(res.body.resources[0].name).toBe('Test Resource 1');
+  });
+  
+  test('GET /api/resources/:id should return a single resource', async () => {
+    const res = await request(app).get('/api/resources/1');
+    
+    expect(res.statusCode).toBe(200);
+    expect(res.body.id).toBe(1);
+    expect(res.body.name).toBe('Test Resource 1');
+    expect(res.body.stats).toBeDefined();
+    expect(res.body.planets).toBeDefined();
+  });
+  
+  test('GET /api/resources/:id with invalid ID should return 404', async () => {
+    const res = await request(app).get('/api/resources/999');
+    
+    expect(res.statusCode).toBe(404);
+  });
+});
+```
+
+Create similar test files for schematics and calculator APIs.
 
 ### 2. Database Migration Script
 
-Create scripts for production database setup and migrations.
+Create a deployment script `server/scripts/deploy.js`:
+
+```javascript
+const { execSync } = require('child_process');
+const path = require('path');
+const fs = require('fs');
+const dotenv = require('dotenv');
+
+// Load environment variables
+dotenv.config({ path: '.env.production' });
+
+// Configuration
+const DB_BACKUP_PATH = path.resolve(__dirname, '../backups');
+const MIGRATIONS_PATH = path.resolve(__dirname, '../database/migrations');
+
+// Create backups directory if it doesn't exist
+if (!fs.existsSync(DB_BACKUP_PATH)) {
+  fs.mkdirSync(DB_BACKUP_PATH, { recursive: true });
+}
+
+// Functions
+function runCommand(command) {
+  console.log(`Running: ${command}`);
+  try {
+    execSync(command, { stdio: 'inherit' });
+  } catch (error) {
+    console.error(`Command failed: ${command}`);
+    throw error;
+  }
+}
+
+function createBackup() {
+  if (process.env.NODE_ENV !== 'production') {
+    console.log('Creating SQLite backup...');
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const backupFile = path.join(DB_BACKUP_PATH, `database-${timestamp}.sqlite`);
+    fs.copyFileSync(
+      path.resolve(__dirname, '../database/database.sqlite'),
+      backupFile
+    );
+    console.log(`Backup created: ${backupFile}`);
+  } else {
+    console.log('Creating PostgreSQL backup...');
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const backupFile = path.join(DB_BACKUP_PATH, `database-${timestamp}.sql`);
+    runCommand(`pg_dump -h ${process.env.DB_HOST} -U ${process.env.DB_USER} -d ${process.env.DB_NAME} -f ${backupFile}`);
+    console.log(`Backup created: ${backupFile}`);
+  }
+}
+
+function runMigrations() {
+  console.log('Running database migrations...');
+  runCommand('npx sequelize-cli db:migrate');
+}
+
+function importData() {
+  console.log('Importing data...');
+  runCommand('node server/utils/importData.js');
+}
+
+// Main deployment process
+async function deploy() {
+  try {
+    console.log('Starting deployment process...');
+    
+    // Create backup
+    createBackup();
+    
+    // Run migrations
+    runMigrations();
+    
+    // Import data if needed
+    importData();
+    
+    console.log('Deployment completed successfully');
+  } catch (error) {
+    console.error('Deployment failed:', error);
+    process.exit(1);
+  }
+}
+
+// Run deployment
+deploy();
+```
 
 ### 3. Deployment Documentation
 
-Document the deployment process and requirements.
+Create `docs/deployment.md`:
+
+```markdown
+# Deployment Guide
+
+This document outlines the steps required to deploy the SWG Resource Explorer application in a production environment.
+
+## Prerequisites
+
+- Node.js 16+ and npm 8+
+- PostgreSQL 12+ (for production)
+- Git
+
+## Environment Setup
+
+1. Clone the repository:
+
+```bash
+git clone https://github.com/yourusername/swg-resource-explorer.git
+cd swg-resource-explorer
+```
+
+2. Create environment variables file:
+
+```bash
+cp .env.example .env.production
+```
+
+3. Edit `.env.production` and set the following variables:
+
+```
+NODE_ENV=production
+PORT=5000
+DB_HOST=your-postgres-host
+DB_PORT=5432
+DB_USER=your-db-username
+DB_PASS=your-db-password
+DB_NAME=swg_resources
+```
+
+## Database Setup
+
+1. Install dependencies:
+
+```bash
+npm install
+```
+
+2. Create the database:
+
+```bash
+createdb -h $DB_HOST -U $DB_USER swg_resources
+```
+
+3. Run migrations and import data:
+
+```bash
+npm run deploy
+```
+
+## Application Deployment
+
+### Option 1: Standard Server
+
+1. Build the frontend:
+
+```bash
+npm run build
+```
+
+2. Start the server:
+
+```bash
+npm start
+```
+
+### Option 2: Docker Deployment
+
+1. Build Docker image:
+
+```bash
+docker build -t swg-resource-explorer .
+```
+
+2. Run the container:
+
+```bash
+docker run -d -p 5000:5000 --name swg-explorer --env-file .env.production swg-resource-explorer
+```
+
+### Option 3: Cloud Deployment (Heroku)
+
+1. Install Heroku CLI:
+
+```bash
+npm install -g heroku
+```
+
+2. Create Heroku app:
+
+```bash
+heroku create swg-resource-explorer
+```
+
+3. Add PostgreSQL addon:
+
+```bash
+heroku addons:create heroku-postgresql:hobby-dev
+```
+
+4. Set environment variables:
+
+```bash
+heroku config:set NODE_ENV=production
+```
+
+5. Deploy:
+
+```bash
+git push heroku main
+```
+
+## Maintenance
+
+### Database Backups
+
+Automated backups are created before each migration. To manually create a backup:
+
+```bash
+node server/scripts/backup.js
+```
+
+### Updates
+
+To update the application:
+
+1. Pull the latest changes:
+
+```bash
+git pull origin main
+```
+
+2. Update dependencies:
+
+```bash
+npm install
+```
+
+3. Run deployment script:
+
+```bash
+npm run deploy
+```
+
+4. Restart the server:
+
+```bash
+npm restart
+```
+
+## Monitoring
+
+The application logs are written to:
+
+- Console output
+- `logs/app.log` file (rotated daily)
+
+Use a monitoring service like PM2, New Relic, or Datadog for production monitoring.
+```
 
 ## Implementation Schedule
 
@@ -1134,9 +2302,21 @@ This implementation can be completed in approximately 4-6 weeks, with the follow
 
 ## Benefits
 
-1. **Improved Performance**: Optimized database queries with proper indexing
-2. **Better Scalability**: Handles growing data and complexity efficiently
-3. **Enhanced Filtering**: More powerful filtering capabilities
-4. **Crafting Calculator**: Foundation for complex crafting calculations
-5. **Persistent Storage**: Data survives server restarts
-6. **Future Growth**: Structured foundation for new features
+1. **Improved Performance**: Optimized database queries with proper indexing, more efficient than XML parsing
+2. **Better Scalability**: Handles growing data and complexity efficiently with connection pooling and resource management
+3. **Enhanced Filtering**: More powerful filtering capabilities with SQL-based queries
+4. **Crafting Calculator**: Foundation for complex crafting calculations that would be difficult with XML processing
+5. **Persistent Storage**: Data survives server restarts and can be backed up and restored
+6. **Future Growth**: Structured foundation for new features with clear relationships between entities
+7. **Improved Testing**: Easier to test and validate with database transactions that can be rolled back
+8. **Better Error Handling**: Comprehensive error tracking and logging throughout the application
+9. **Environment Flexibility**: Development in SQLite for simplicity, production in PostgreSQL for power
+10. **API Consistency**: Standardized API responses and error handling across all endpoints
+
+## Next Steps After Implementation
+
+1. **Performance Monitoring**: Set up metrics to track database performance
+2. **Caching Layer**: Add Redis caching for frequently accessed data
+3. **API Documentation**: Create comprehensive API documentation with Swagger/OpenAPI
+4. **User Authentication**: Implement authentication for write operations
+5. **Real-time Updates**: Add WebSocket support for real-time resource updates

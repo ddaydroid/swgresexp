@@ -18,20 +18,27 @@
     "@types/react-dom": "^19.1.1",
     "axios": "^1.8.4",
     "chart.js": "^4.4.8",
+    "commander": "^10.0.1",
     "concurrently": "^9.1.2",
     "cors": "^2.8.5",
+    "dotenv": "^16.5.0",
     "express": "^5.1.0",
     "fast-xml-parser": "^5.2.0",
+    "joi": "^17.13.3",
     "loader": "^2.1.1",
     "nodemon": "^3.1.9",
+    "pg": "^8.14.1",
     "react": "^19.1.0",
     "react-chartjs-2": "^5.3.0",
     "react-dom": "^19.1.0",
     "react-redux": "^9.2.0",
     "react-scripts": "5.0.1",
     "redux": "^5.0.1",
+    "sequelize": "^6.37.7",
+    "sqlite3": "^5.1.7",
     "typescript": "^4.9.5",
-    "web-vitals": "^2.1.4"
+    "web-vitals": "^2.1.4",
+    "winston": "^3.17.0"
   },
   "scripts": {
     "start": "react-scripts start",
@@ -41,7 +48,13 @@
     "server": "nodemon server/server.js",
     "client": "npm start",
     "dev": "concurrently \"npm run server\" \"npm run client\"",
-    "copy-xml": "cp ../currentresources_168.xml ."
+    "copy-xml": "cp ../currentresources_168.xml .",
+    "db:migrate": "npx sequelize-cli db:migrate",
+    "db:seed": "npx sequelize-cli db:seed:all",
+    "db:reset": "npx sequelize-cli db:drop && npx sequelize-cli db:create && npm run db:migrate",
+    "server:db": "nodemon server/database-server.js",
+    "import:resources": "node server/scripts/import-data.js --resources currentresources_168.xml",
+    "test:db": "node server/scripts/test-database.js"
   },
   "eslintConfig": {
     "extends": [
@@ -61,5 +74,10 @@
       "last 1 safari version"
     ]
   },
-  "proxy": "http://localhost:5000"
+  "proxy": "http://localhost:5000",
+  "devDependencies": {
+    "jest": "^29.7.0",
+    "sequelize-cli": "^6.6.2",
+    "supertest": "^6.3.4"
+  }
 }
